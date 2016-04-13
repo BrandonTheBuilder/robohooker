@@ -1,0 +1,3 @@
+[submodule "src/fish_detective/src/vision"]
+	path = src/fish_detective/src/vision
+	url = ../../gibeautc/vision.git

@@ -12,7 +12,13 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from collections import deque
 
-
+# Yellow Lower aeb634
+# 64, 71.4, 71.4
+# 62, 62.5, 91
+redLow = np.uint8([[[0,255,0 ]]])
+redHigh = np.uint8([[[0,255,0 ]]])
+yellowLower = cv2.cvtColor(green,cv2.COLOR_BGR2HSV)
+yellowUpper = (400, int((70.5/100)*255), int((255.4/100)*255))
 whiteLower =(0,225,50)
 whiteUpper =(180,255,255)
 
@@ -39,7 +45,7 @@ class BlobTracker(object):
         # frame = self.resize(frame, *self.board_frame)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        mask_w = cv2.inRange(hsv, whiteLower, whiteUpper)
+        mask_w = cv2.inRange(hsv, yellowLower, yellowUpper)
 
         #mask_w = cv2.erode(mask_w, None, iterations=2)
         mask_w = cv2.dilate(mask_w, None, iterations=2)
@@ -61,7 +67,7 @@ class BlobTracker(object):
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
                 # only proceed if the radius meets a minimum size (default was 10)
                 #print ("Radius:",radius)
-                if radius > 9 and radius <13:
+                if radius >25 and radius <35:
                         fishcount=fishcount+1
                         # draw the circle and centroid on the frame,
                         # then update the list of tracked points

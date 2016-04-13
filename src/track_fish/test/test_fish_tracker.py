@@ -63,7 +63,7 @@ class TestFishTracker(unittest.TestCase):
         center = Point(356, 412)
         points = []
         t =[]
-        for i in range(8):
+        for i in range(80):
             points.append(Point(r, (np.pi-np.pi*(i)/8)+np.pi, from_polar=True))
             t.append(i*0.2)
         theta_one = (np.pi-np.pi/8)+np.pi
@@ -74,7 +74,7 @@ class TestFishTracker(unittest.TestCase):
             print point
         ft = FishTracker()
         ft.calibrate(center, points[0:3], t[0:3])
-        for i in range(3,8):
+        for i in range(3,80):
             fish = Point(ft.radius, ft.find_angle(t[i]))+center
             self.assertEquals(abs(fish.x-points[i].x)>1, True)
             self.assertEquals(abs(fish.y-points[i].y)>1, True)

@@ -22,8 +22,8 @@ class Hough(object):
     cimg = img
     # img = cv2.medianBlur(img,5)
 
-    circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=2,
-              param2=5, minRadius=25, maxRadius=40)
+    circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
+              param2=40, minRadius=25, maxRadius=35)
 
     circles = np.uint16(np.around(circles))
     for i in circles[0,:]:

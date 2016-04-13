@@ -12,7 +12,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from scipy.optimize import leastsq
 from point import Point
 BUFFER_SIZE = 4
-TIME_STEP = 0.1
+TIME_STEP = 0.5
 
 class HandFishFinder(object):
     def __init__(self):
@@ -55,8 +55,8 @@ class HandFishFinder(object):
             self.calibration_index += 1
         cv2.destroyWindow('Calibration')
         # Now that we have some data let's use it
-        x = sum([point.x for point in self.board_center])
-        y = sum([point.y for point in self.board_center])
+        x = np.mean([point.x for point in self.board_center])
+        y = np.mean([point.y for point in self.board_center])
         
         self.center_point = Point(x,y)
         self._calibrate(self.center_point, self.fish_center, t_steps)
@@ -80,9 +80,15 @@ class HandFishFinder(object):
             dt = t[i]-t[i-1]
             rates.append(dTheta/dt)
         rate = np.mean(rates)
-        freq = rate/(2*np.pi)
-        phase = np.arcsin((theta[0]-np.pi)/np.pi) - freq*t[0]
-        self.find_angle = lambda t_step: (np.pi + np.pi*np.sin(freq*t_step+phase)) 
+        bs = []
+        for i in range(0, len(t)-1):
+            bs.append(theta[i] - rate*t[i])
+
+        # freq = rate/(2*np.pi)
+        # phase = np.arcsin((theta[0]-np.pi)/np.pi) - freq*t[0]
+        b = np.mean(bs)
+        # self.find_angle = lambda t_step: -(np.pi + np.pi*np.sin(freq*t_step+phase)) 
+        self.find_angle = lambda t_step: rate*t_step + b
         self.calibrated = True
         
 
@@ -92,23 +98,24 @@ class HandFishFinder(object):
 
     def mouse_press(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            self.board_center[self.calibration_index] = Point(x,-y)
+            print 'Mouse event at {}'.format((x,y))
+            self.board_center[self.calibration_index] = Point(x,y, from_image=True)
         elif event == cv2.EVENT_RBUTTONDOWN:
-            self.fish_center[self.calibration_index] = Point(x,-y)
+            self.fish_center[self.calibration_index] = Point(x,y, from_image=True)
 
     
     def callback(self, image):
-        t = rospy.get_time()
+        t = image.header.stamp.to_time()
         image = self.bridge.imgmsg_to_cv2(image, "bgr8")
         if not self.buffer_full:
             self.add_image(image, t)
         if self.calibrated:
             theta = self.find_angle(t)
-            rospy.loginfo('center {}'.format(self.center_point))
+            rospy.loginfo('Theta: {}'.format(theta))
             fish_pos = Point(self.radius, theta, from_polar=True)
             glob_fish_pos = fish_pos+self.center_point
-            cv2.circle(image,(int(self.center_point.x),int(-self.center_point.y)),10,(255,255,255),3)
-            cv2.circle(image,(int(glob_fish_pos.x), int(-glob_fish_pos.y)), 30,(0,255,0),2)
+            cv2.circle(image,self.center_point.to_image(),3,(255,0,0),3)
+            cv2.circle(image,glob_fish_pos.to_image(), 30,(0,255,0),2)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(image, "bgr8"))
 
 

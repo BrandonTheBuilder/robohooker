@@ -1,4 +1,3 @@
 #!/bin/bash
 python gen_samples.py
-opencv_createsamples -vec close_samples.vec -bg negatives.txt -num 1500 -info close.dat -w 40 -h 40
-opencv_createsamples -vec open_samples.vec -bg negatives.txt -num 1500 -bg negatives.txt -info open.dat -w 40 -h 40
+opencv_createsamples -vec close_samples.vec -bg negative.txt -num 1263 -info close.dat -w 35 -h 35

@@ -8,7 +8,7 @@ import numpy as np
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
-CASCADE_CLASSIFIER = '../training/classifiers/cascade.xml'
+CASCADE_CLASSIFIER = '../training/harr_fish/cascade.xml'
 
 class HaarFishFinder(object):
     def __init__(self):
@@ -20,7 +20,7 @@ class HaarFishFinder(object):
     def callback(self, image):
         cimg = self.bridge.imgmsg_to_cv2(image, "bgr8")
         img = cv2.cvtColor(cimg, cv2.COLOR_BGR2GRAY)
-        fishes = self.find_fish.detectMultiScale(img, 1.3, 1)
+        fishes = self.find_fish.detectMultiScale(img, 1.01, 0)
         rospy.loginfo('Found {} Fishes'.format(len(fishes)))
         for (x,y,w,h) in fishes:
             cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)

@@ -23,3 +23,15 @@ for root, dirs, files in os.walk(os.path.join(dirname, op)):
         except Exception as ex:
             print ex
 o_file.close()
+
+neg = 'negative'
+o_file= open(neg+'.txt', 'w')
+for root, dirs, files in os.walk(os.path.join(dirname, neg)):
+    for name in files:
+        try:
+            img = cv2.imread(os.path.join(root, name))
+            rect = [0,0,img.shape[1], img.shape[0]]
+            o_file.write(os.path.join(root, name)+'\n')
+        except Exception as ex:
+            print ex
+o_file.close()

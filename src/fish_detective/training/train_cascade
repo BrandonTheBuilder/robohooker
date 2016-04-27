@@ -1,4 +1,4 @@
 #!/bin/bash
 opencv_traincascade -data harr_fish -vec close_samples.vec -bg negative.txt\
-  -numStages 1 -numPos 1000\
+  -numStages 9 -numPos 1000\
   -numNeg 10157 -w 35 -h 35 

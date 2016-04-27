@@ -7,9 +7,9 @@ import cv2.cv as cv
 import numpy as np
 
 from cv_bridge import CvBridge
-
+CASCADE_CLASSIFIER = '../training/harr_fish/cascade.xml'
 #BAG_NAME = '../bags/2016-04-06-16-57-50.bag' #1437
-BAG_NAME = '../training/bags/no_fish.bag'
+BAG_NAME = '../training/bags/three_fish.bag'
 CLOSE = '../training/close/'
 OPEN = '../training/open/'
 DISCARD = '../training/discard/'
@@ -17,12 +17,16 @@ NEGATIVE = '../training/negative/'
 
 class ImageSorter(object):
     def __init__(self):
-        bridge = CvBridge()
         bag = rosbag.Bag(BAG_NAME)
         self.imgs = []
+        self.imgs = self.get_img(bag)
+        # self.num_imgs = len(self.imgs)
+
+    def get_img(self, bag):
+        bridge = CvBridge()
         for topic, msg, t in bag.read_messages(topics=['/cv_camera/image_raw/']):
-            self.imgs.append(bridge.imgmsg_to_cv2(msg, "bgr8"))
-        self.num_imgs = len(self.imgs)
+            yield bridge.imgmsg_to_cv2(msg, "bgr8")
+
         
 
     def find_no_fish(self):
@@ -103,9 +107,22 @@ class ImageSorter(object):
             else:
                 print k # else print its value
 
+    def test_harr(self, img):
+        self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
+        window = 'test_harr'
+        cv2.namedWindow(window)
+        cv2.startWindowThread()
+        rects = self.getCircles(img, 35)
+        for rect in rects:
+            fishes = self.find_fish.detectMultiScale(rect, 1.01, 0, minSize = (25,25), maxSize=(35,35))
+            print 'Found {} Fishes'.format(len(fishes))
+            cv2.imshow(window, rect)
+            k = cv2.waitKey(0)
+        cv2.destroyWindow(window)
+
 if __name__ == '__main__':
     s = ImageSorter()
-    s.find_no_fish()
+    
     import IPython; IPython.embed()
     
 

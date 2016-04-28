@@ -41,4 +41,7 @@ class Point(object):
             return 0
 
     def __str__(self):
-        return '{},{}'.format(self.x, self.y)
+        return '({},{})'.format(self.x, self.y)
+
+    def get_tuple(self):
+        return (self.x, self.y)

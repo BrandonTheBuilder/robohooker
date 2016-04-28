@@ -34,14 +34,27 @@ class Calibrator(object):
                 self.skew_index += 1
             else:
                 print 'Press enter to continue...'
-            print 'index: {}, points: {}'.format(self.skew_index, 
-                                            [str(p) for p in self.skew_points])
+            
         elif event == cv2.EVENT_RBUTTONDOWN:
             if self.skew_points[self.skew_index] is 0 and self.skew_index > 0:
                 self.skew_index -= 1
             self.skew_points[self.skew_index] = 0
-            print 'index: {}, points: {}'.format(self.skew_index, 
-                                            [str(p) for p in self.skew_points])
+            
+
+    
+    def find_fish(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            print 'Left Click at {}'.format((x,y))
+            self.fishes[self.fish_index] = Point(x,y, from_image=True)
+            if self.fish_index < 23:
+                self.fish_index += 1
+            else:
+                print 'Press enter to continue...'
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            if self.fishes[self.fish_index] is 0 and self.fish_index > 0:
+                self.fish_index -= 1
+            self.fishes[self.fish_index] = 0
+            
 
     def calibrate(self, image):
         if self.calibrating:
@@ -83,15 +96,38 @@ class Calibrator(object):
             skewed = [Point(r, t, from_polar=True)+self.center_point for t in theta]
             before = np.float32([p.to_image() for p in glob_points])
             after = np.float32([p.to_image() for p in skewed])
-            skew_matrix = cv2.getPerspectiveTransform(before, after)
-            x_offset = r-self.center_point.x
-            translate_matrix = np.float32([[ 1 , 0 , x_offset],[ 0 , 1 , 0]])
+            self.skew_matrix = cv2.getPerspectiveTransform(before, after)
+            # x_offset = r-self.center_point.x
+            # translate_matrix = np.float32([[ 1 , 0 , x_offset],[ 0 , 1 , 0]])
             self.fish_index = 0
-            self.fishes = []
-            img = cv2.warpPerspective(img, skew_matrix, (3000, 3000))
+            self.fishes = [0]*24
+            cv2.setMouseCallback("Calibration", self.find_fish)
+            img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
             # img = cv2.warpAffine(img,translate_matrix,(int(r*2),int(r*2)))
-            cv2.imshow('Calibration', img)
-            k = cv2.waitKey(0)
+            while True:
+                image = copy.copy(img)
+                for i in range(len(self.fishes)):
+                    if self.fishes[i] is not 0:
+                        if i <= 2:
+                            cv2.circle(image, self.fishes[i].to_image(), 3, (255,0,0), 3)
+                        else:
+                            cv2.circle(image, self.fishes[i].to_image(),30,(255,0,0),3)
+                cv2.imshow('Calibration', image)
+                k = cv2.waitKey(33)
+                if k==10:
+                    # enter pressed
+                    if self.skew_points[1] is not 0:
+                        break
+                    else:
+                        print 'Please select center and all fish'
+                elif k==-1:
+                    pass
+                else:
+                    print k
+                    print 'Press Enter to continue..'
+            for i in range(1, len(self.fishes)):
+                if self.fishes[i] is not 0:
+                    self.fishes[i] = self.fishes[i]-self.fishes[0]
             cv2.destroyWindow('Calibration')
             self.calibrated = True
 
@@ -101,6 +137,12 @@ def main(args):
     c._init_ros()
     while not c.calibrated:
         pass
+    data_file = os.path.join(os.path.dirname(__file__), 'calibration_data.py')
+    calibration_data = open(data_file, 'w')
+    calibration_data.write('board_center = {} \n'.format(str(c.fishes[0])))
+    calibration_data.write('board_edges = {} \n'.format([str(c.fishes[1]), str(c.fishes[2])]))
+    calibration_data.write('skew_matrix = {} \n'.format(str(c.skew_matrix.tolist())))
+    calibration_data.write('fishes = {} \n'.format([f.get_tuple() for f in c.fishes[3:]]))
 
 if __name__ == '__main__':
     main(sys.argv)

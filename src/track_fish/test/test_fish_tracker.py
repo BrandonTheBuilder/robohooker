@@ -5,10 +5,12 @@ import cv2
 import cv2.cv as cv
 from cv_bridge import CvBridge
 import rosbag
+import random
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from point import Point
 import fish_hole as fsh
 from fish_hole import FishHole
+from fish_tracker import FishTracker
 
 
 class TestFishTracker(unittest.TestCase):
@@ -67,25 +69,25 @@ class TestFishTracker(unittest.TestCase):
     def test_append(self):
         ft = FishHole()
         for i in range(fsh.DEQUE_SIZE + 3):
-            ft.append(ft.t, i)
+            ft.append(ft.fishiness, i)
         for i in range(fsh.DEQUE_SIZE):
-            self.assertEquals(ft.t[i], i+3)
+            self.assertEquals(ft.fishiness[i], i+3)
 
 
-    def test_calibration(self):
-        r = 20
-        fh = FishHole()
-        for i in range(10):
-            point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
-            t = i*0.2*1234543.0
-            fh.calibrate(point, t)
-        for i in range(10,20):
-            point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
-            t = i*0.2*1234543.0
-            fish = fh.get_position(t)
-            # print 't: {}, fish: {}, point: {}'.format(t, fish, point)
-            self.assertEquals(abs(fish.x-point.x)<1, True)
-            self.assertEquals(abs(fish.y-point.y)<1, True)
+    # def test_calibration(self):
+    #     r = 20
+    #     fh = FishHole()
+        # for i in range(10):
+        #     point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
+    #         t = i*0.2*1234543.0
+    #         fh.calibrate(point, t)
+    #     for i in range(10,20):
+    #         point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
+    #         t = i*0.2*1234543.0
+    #         fish = fh.get_position(t)
+    #         # print 't: {}, fish: {}, point: {}'.format(t, fish, point)
+    #         self.assertEquals(abs(fish.x-point.x)<1, True)
+    #         self.assertEquals(abs(fish.y-point.y)<1, True)
 
 
     def test_fishy_calibration(self):
@@ -114,8 +116,8 @@ class TestFishTracker(unittest.TestCase):
         neg_count = 1
         for img in imgs:
             fh.fishy_calibration(img)
-            print 'neg_count {}, Is fish: {}'.format(neg_count,
-                                                    fh.is_fish())
+            # print 'neg_count {}, Is fish: {}'.format(neg_count,
+            #                                         fh.is_fish())
             neg_count+=1
         self.assertEquals(False, fh.is_fish())
 
@@ -138,6 +140,44 @@ class TestFishTracker(unittest.TestCase):
         for i in circles[0,:]:
             rects.append(img[i[1]-rad:i[1]+rad, i[0]-rad:i[0]+rad])
         return rects
+
+    def test_rotation(self):
+        ft = FishTracker()
+        r = 20
+        points = [Point(r, 0.0, from_polar=True)]
+        p = [n.get_tuple() for n in points]
+        rot = ft.rotate(p, np.pi/4)
+        rotated = Point(*rot[0])
+        self.assertEquals(rotated.angle(), np.pi/4)
+
+        points = [Point(r, 0.0, from_polar=True), 
+                    Point(r, np.pi/4, from_polar=True)]
+        p = [n.get_tuple() for n in points]
+        rot = ft.rotate(p, np.pi/4)
+        rot_one = Point(*rot[0])
+        rot_two = Point(*rot[1])
+        self.assertAlmostEquals(rot_one.angle(), np.pi/4)
+        self.assertAlmostEquals(rot_two.angle(), np.pi/2)
+
+    
+    def test_get_rotation(self):
+        ft = FishTracker()
+        r = 20
+        est = (np.pi/4 - 0.1)
+        points = []
+        offset = []
+        for i in range(5):
+            points.append(Point(r, (np.pi-np.pi*(i)/8)+np.pi, from_polar=True))
+        
+        ref = [a.get_tuple() for a in points]
+        full_comp = ft.rotate(ref, np.pi/4)
+        comp = []
+        for i in range(3):
+            choice = random.choice(full_comp)
+            full_comp.remove(choice)
+            comp.append(choice)
+        r = ft.get_angle_offset(ref, comp, est)
+        import IPython; IPython.embed()
 
 
 

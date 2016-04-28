@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys
+import sys, os
 import rospy
 import cv2
 import cv2.cv as cv
@@ -15,7 +15,7 @@ class HaarFishFinder(object):
         self.bridge = CvBridge()
         self.image_pub = rospy.Publisher("image_topic_2",Image, queue_size=2)
         self.image_sub = rospy.Subscriber("/cv_camera/image_raw",Image,self.callback)
-        self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
+        self.find_fish = cv2.CascadeClassifier(os.path.join(os.path.dirname(__file__),CASCADE_CLASSIFIER))
 
     def callback(self, image):
         cimg = self.bridge.imgmsg_to_cv2(image, "bgr8")

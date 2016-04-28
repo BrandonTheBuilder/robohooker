@@ -1,11 +1,14 @@
 import numpy as np
 
 class Point(object):
-    def __init__(self, x, y, from_polar=False):
+    def __init__(self, x, y, from_polar=False, from_image=False):
         # from polar r=x, theta=y
         if from_polar:
             self.x = np.cos(y)*x
             self.y = np.sin(y)*x
+        elif from_image:
+            self.x = x
+            self.y = -y
         else:
             self.x = x
             self.y = y
@@ -20,6 +23,9 @@ class Point(object):
             return angle - np.pi*2
         else:
             return angle
+
+    def to_image(self):
+        return (int(self.x), int(-self.y))
 
     def magnitude(self):
         return np.sqrt(self.x**2 + self.y**2)

@@ -22,18 +22,18 @@ class Hough(object):
     cimg = img
     # img = cv2.medianBlur(img,5)
 
-    circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
+    circles = cv2.HoughCircles(cimg,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
               param2=40, minRadius=25, maxRadius=35)
 
     circles = np.uint16(np.around(circles))
     for i in circles[0,:]:
         # draw the outer circle
-        cv2.circle(cimg,(i[0],i[1]),i[2],(0,255,0),2)
+        cv2.circle(img,(i[0],i[1]),i[2],(0,255,0),2)
         # draw the center of the circle
-        cv2.circle(cimg,(i[0],i[1]),2,(0,0,255),3)
+        cv2.circle(img,(i[0],i[1]),2,(0,0,255),3)
 
     try:
-      self.image_pub.publish(self.bridge.cv2_to_imgmsg(cimg, "8UC1"))
+      self.image_pub.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
     except CvBridgeError as e:
       print(e)
 

@@ -1,9 +1,15 @@
 import unittest
 import numpy as np
 import sys, os
+import cv2
+import cv2.cv as cv
+from cv_bridge import CvBridge
+import rosbag
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from point import Point
-from fish_tracker import FishTracker
+import fish_hole as fsh
+from fish_hole import FishHole
+
 
 class TestFishTracker(unittest.TestCase):
     def test_point(self):
@@ -58,25 +64,80 @@ class TestFishTracker(unittest.TestCase):
         self.assertAlmostEquals(quadrant_four_polar.y, quadrant_four.y)
 
 
-    def test_fish_tracker(self):
+    def test_append(self):
+        ft = FishHole()
+        for i in range(fsh.DEQUE_SIZE + 3):
+            ft.append(ft.t, i)
+        for i in range(fsh.DEQUE_SIZE):
+            self.assertEquals(ft.t[i], i+3)
+
+
+    def test_calibration(self):
         r = 20
-        center = Point(356, 412)
-        points = []
-        t =[]
-        for i in range(80):
-            points.append(Point(r, (np.pi-np.pi*(i)/8)+np.pi, from_polar=True))
-            t.append(i*0.2)
-        theta_one = (np.pi-np.pi/8)+np.pi
-        self.assertEquals(points[1].angle(), theta_one)
-        for i in range(8):
-            points[i]=points[i]+center
-        for point in points:
-            print point
-        ft = FishTracker()
-        ft.calibrate(center, points[0:3], t[0:3])
-        for i in range(3,80):
-            fish = Point(ft.radius, ft.find_angle(t[i]))+center
-            self.assertEquals(abs(fish.x-points[i].x)>1, True)
-            self.assertEquals(abs(fish.y-points[i].y)>1, True)
+        fh = FishHole()
+        for i in range(10):
+            point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
+            t = i*0.2*1234543.0
+            fh.calibrate(point, t)
+        for i in range(10,20):
+            point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
+            t = i*0.2*1234543.0
+            fish = fh.get_position(t)
+            # print 't: {}, fish: {}, point: {}'.format(t, fish, point)
+            self.assertEquals(abs(fish.x-point.x)<1, True)
+            self.assertEquals(abs(fish.y-point.y)<1, True)
+
+
+    def test_fishy_calibration(self):
+        fh = FishHole()
+        dirname = os.path.dirname(__file__)
+        neg = os.path.join(dirname,
+            '../../fish_detective/training/negative/')
+        pos = os.path.join(dirname,
+            '../../fish_detective/training/close/')
+        poss = os.walk(pos)
+        negs = os.walk(neg)
+        p_root, dirs, pos_files = poss.next()
+        n_root, dirs, neg_files = negs.next()
+
+        BAG_NAME = '../../fish_detective/bags/2016-04-06-16-57-50.bag' #1437
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_img(bag)
+        imgs = [imgs.next() for i in range(100)]
+        for img in imgs:
+            fh.fishy_calibration(img)
+        self.assertEquals(fh.is_fish(), True)
+        BAG_NAME = '../../fish_detective/training/bags/no_fish.bag'
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_img(bag)
+        imgs = [imgs.next() for i in range(100)]
+        neg_count = 1
+        for img in imgs:
+            fh.fishy_calibration(img)
+            print 'neg_count {}, Is fish: {}'.format(neg_count,
+                                                    fh.is_fish())
+            neg_count+=1
+        self.assertEquals(False, fh.is_fish())
+
+
+
+    def get_img(self, bag):
+        bridge = CvBridge()
+        for topic, msg, t in bag.read_messages(topics=['/cv_camera/image_raw/']):
+            img = bridge.imgmsg_to_cv2(msg, "bgr8")
+            rects = self.getCircles(img, 35)
+            for rect in rects:
+                yield rect
+
+    def getCircles(self, img, rad):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
+              param2=40, minRadius=25, maxRadius=35)
+        circles = np.uint16(np.around(circles))
+        rects = []
+        for i in circles[0,:]:
+            rects.append(img[i[1]-rad:i[1]+rad, i[0]-rad:i[0]+rad])
+        return rects
+
 
 

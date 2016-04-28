@@ -8,8 +8,8 @@ import numpy as np
 
 from cv_bridge import CvBridge
 CASCADE_CLASSIFIER = '../training/harr_fish/cascade.xml'
-#BAG_NAME = '../bags/2016-04-06-16-57-50.bag' #1437
-BAG_NAME = '../training/bags/three_fish.bag'
+BAG_NAME = '../bags/2016-04-06-16-57-50.bag' #1437
+# BAG_NAME = '../training/bags/no_fish.bag'
 CLOSE = '../training/close/'
 OPEN = '../training/open/'
 DISCARD = '../training/discard/'
@@ -114,10 +114,63 @@ class ImageSorter(object):
         cv2.startWindowThread()
         rects = self.getCircles(img, 35)
         for rect in rects:
-            fishes = self.find_fish.detectMultiScale(rect, 1.01, 0, minSize = (25,25), maxSize=(35,35))
+            fishes = self.find_fish.detectMultiScale(rect, 1.01, 1, minSize = (25,25), maxSize=(35,35))
             print 'Found {} Fishes'.format(len(fishes))
             cv2.imshow(window, rect)
             k = cv2.waitKey(0)
+        cv2.destroyWindow(window)
+
+    def test_positive_harr(self):
+        BAG_NAME = '../bags/2016-04-06-16-57-50.bag' #1437
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_img(bag)
+        results = []
+        for img in imgs:
+            self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
+            rects = self.getCircles(img, 35)
+            for rect in rects:
+                print rect.shape
+                fishes = self.find_fish.detectMultiScale(rect, 1.01, 1, minSize = (25,25), maxSize=(35,35))
+                results.append(len(fishes))
+        print 'positives mean: {} std: {}'.format(np.mean(results), np.std(results))
+
+        self.plot_histogram(results)
+
+    def test_negative_harr(self):
+        BAG_NAME = '../training/bags/no_fish.bag'
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_img(bag)
+        results = []
+        for img in imgs:
+            self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
+            rects = self.getCircles(img, 35)
+            for rect in rects:
+                fishes = self.find_fish.detectMultiScale(rect, 1.01, 1, minSize = (25,25), maxSize=(35,35))
+                results.append(len(fishes))
+        print 'negatives mean: {} std: {}'.format(np.mean(results), np.std(results))
+        self.plot_histogram(results)
+
+
+    def plot_histogram(self, data):
+        import matplotlib.pyplot as plt
+        n, bins, patches = plt.hist(data, 50, normed=1, facecolor='b', alpha=0.75)
+        plt.xlabel('Value')
+        plt.ylabel('Probability')
+        plt.title('len() of fishes vectore returned by harr')
+        plt.axis([0, 10, 0, 50])
+        plt.grid(True)
+        plt.show()
+
+    def test_whole_image(self, img):
+        self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
+        window = 'test_harr'
+        cv2.namedWindow(window)
+        cv2.startWindowThread()
+        fishes = self.find_fish.detectMultiScale(img, 1.01, 1, minSize = (25,25), maxSize=(35,35))
+        for (x,y,w,h) in fishes:
+            cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
+        cv2.imshow(window, img)
+        cv2.waitKey(0)
         cv2.destroyWindow(window)
 
 if __name__ == '__main__':

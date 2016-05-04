@@ -1,21 +1,11 @@
 import numpy as np
 from numpy.linalg import inv
 
-__all__ = ['Arm', 'plan_path', 'link_position']
+__all__ = ['Arm']
 
 STEP_SIZE = 0.01
 TOLERANCE = 0.05
 SCALAR = 1.0
-
-def reduce_angle(theta):
-    if theta >= np.pi*2:
-        return reduce_angle(theta - np.pi*2)
-    elif theta <= -np.pi*2:
-        return reduce_angle(theta + np.pi*2)
-    elif theta < 0:
-        return (np.pi+theta) + np.pi
-    else:
-        return theta
 
 def Rx(theta):
     return np.matrix([[1, 0, 0],
@@ -31,55 +21,6 @@ def Rz(theta):
     return np.matrix([[np.cos(theta), -np.sin(theta), 0],
                      [np.sin(theta), np.cos(theta), 0],
                      [0, 0, 1]])
-
-def link_position(theta, phi, psi):
-    rao = np.matrix([0, 0, 4.0]).T
-    rba = np.matrix([0, 0, 3.5]).T
-    a = Rz(theta)*Ry(phi)*rao
-    e = Rz(theta)*Ry(phi)*(rao + Ry(psi)*rba)
-    return (a,e)
-
-def plan_path(goal):
-    done = False
-    rz = np.matrix([0, 0, 1])
-    ry = np.matrix([0,1,0])
-    theta = [0,0,0]
-    while not done:
-        a_pos, e = link_position(*theta)
-        dx = 0
-        dy = 0
-        dz = 0
-        if abs(e.A1[0]-goal[0]) > TOLERANCE:
-            dx = (goal[0]-e.A1[0])
-            
-        if abs(e.A1[1]-goal[1]) > TOLERANCE:
-            dy = (goal[1]-e.A1[1])
-            
-        if abs(e.A1[2]-goal[2]) > TOLERANCE:
-            dz = (goal[2]-e.A1[2])
-            
-        if dx == 0 and dy == 0 and dz == 0: 
-            done = True
-
-        de = [dx, dy, dz]
-        a = np.cross(rz, e.T)
-        r_b = Rz(theta[0])*ry.T
-        b = np.cross(r_b.T, e.T)
-        r_c = Rz(theta[0])*ry.T
-        c = np.cross(r_c.T, a_pos.T)
-        jac = np.concatenate((a,b,c)).T
-        try:
-            inv_jac = inv(jac)
-        except:
-            inv_jac = jac.T
-        dTheta = inv_jac*np.matrix(de).T
-        if not done and np.array_equiv(dTheta.A1, [0,0,0]):
-            dTheta = np.matrix([0.00, 0.01, -0.01]).T
-            
-        theta = np.matrix(theta).T + SCALAR*dTheta
-        theta = theta.T.A1
-    return [reduce_angle(t) for t in theta]
-
 
 class Arm(object):
     rao = np.matrix([0, 0, 4.0]).T
@@ -98,6 +39,9 @@ class Arm(object):
         return Rz(self.theta[0])*Ry(self.theta[1])*self.rao
 
     def jacobian(self):
+        rz = np.matrix([0, 0, 1])
+        ry = np.matrix([0,1,0])
+
         a = np.cross(rz, self.end_position().T)
         r_b = Rz(self.theta[0])*ry.T
         b = np.cross(r_b.T, self.end_position().T)
@@ -121,6 +65,7 @@ class Arm(object):
         done = False
         rz = np.matrix([0, 0, 1])
         ry = np.matrix([0,1,0])
+
         while not done:
             e = self.end_position()
             dx = 0

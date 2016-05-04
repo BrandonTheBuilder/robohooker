@@ -1,7 +1,7 @@
 import unittest
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.motion_control import Arm, plan_path, link_position
+from src.motion_control import Arm
 import numpy as np
 import time
 
@@ -36,29 +36,30 @@ class TestMotionControl(unittest.TestCase):
             print '\nEstimated: {} \nActual: {}\n'.format(e_est, a.end_position())
 
     def test_plan_path(self):
+        a = Arm()
         goal = [0.0, 0.0, 7.0]
         start = time.time()
-        theta = plan_path(goal)
+        theta = a.plan_path(goal)
         end = time.time()
-        print 'found {} in {} secs'.format(theta, end-start)
-        self.assertEquals(np.allclose(link_position(*theta)[1], np.matrix(goal).T, atol=1E-1), True)
+        print 'found {} in {} secs'.format(a.get_theta(), end-start)
+        self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
         goal = [0.0, 0.0, 6.0]
         start = time.time()
-        theta = plan_path(goal)
+        theta = a.plan_path(goal)
         end = time.time()
-        print 'found {} in {} secs'.format(theta, end-start)
-        self.assertEquals(np.allclose(link_position(*theta)[1], np.matrix(goal).T, atol=1E-1), True)
+        print 'found {} in {} secs'.format(a.get_theta(), end-start)
+        self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
         goal = [0.0, 0.0, 7.5]
         start = time.time()
-        theta = plan_path(goal)
+        theta = a.plan_path(goal)
         end = time.time()
-        print 'found {} in {} secs'.format(theta, end-start)
-        self.assertEquals(np.allclose(link_position(*theta)[1], np.matrix(goal).T, atol=1E-1), True)
+        print 'found {} in {} secs'.format(a.get_theta(), end-start)
+        self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
         goal = [2.0, 1.0, 5.5]
         start = time.time()
-        theta = plan_path(goal)
+        theta = a.plan_path(goal)
         end = time.time()
-        print 'found {} in {} secs'.format(theta, end-start)
-        self.assertEquals(np.allclose(link_position(*theta)[1], np.matrix(goal).T, atol=1E-1), True)
+        print 'found {} in {} secs'.format(a.get_theta(), end-start)
+        self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
         
         

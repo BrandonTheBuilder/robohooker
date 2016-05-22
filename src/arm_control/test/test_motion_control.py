@@ -61,5 +61,11 @@ class TestMotionControl(unittest.TestCase):
         end = time.time()
         print 'found {} in {} secs'.format(a.get_theta(), end-start)
         self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
+        goal = [3.0, -2.0, 0.5]
+        start = time.time()
+        theta = a.plan_path(goal)
+        end = time.time()
+        print 'found {} in {} secs'.format(a.get_theta(), end-start)
+        self.assertEquals(np.allclose(a.end_position(), np.matrix(goal).T, atol=1E-1), True)
         
         

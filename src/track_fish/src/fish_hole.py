@@ -26,10 +26,12 @@ class FishHole(object):
 
 
     def fishy_calibration(self, img):
-        fishes = self.find_fish.detectMultiScale(img, 1.01, 1, 
-                                                minSize = (25,25), 
-                                                maxSize=(35,35))
-        self.append(self.fishiness, len(fishes))
+        # fishes = self.find_fish.detectMultiScale(img, 1.01, 1, 
+        #                                         minSize = (25,25), 
+        #                                         maxSize=(35,35))
+        # self.append(self.fishiness, len(fishes))
+        self.append(self.fishiness, 2)
+        pass
 
 
     def is_fish(self):

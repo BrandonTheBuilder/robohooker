@@ -21,7 +21,7 @@ import calibration_data
 
 # Constants
 DEQUE_SIZE = 30
-MAX_ANGLE_ERROR = 400
+MAX_ANGLE_ERROR = 0.01
 ANGLE_STEP = 0.01
 
 
@@ -35,21 +35,20 @@ class FishTracker(object):
         # self.fish_locales = np.matrix(self.fish_locales)
         self.fish_holes = [FishHole() for i in range(len(self.fish_locales))]
         self.board_center = Point(*calibration_data.board_center)
+        self.crop_center = Point(*calibration_data.crop_center)
+        self.crop_radius = calibration_data.crop_radius
         self.theta = deque()
         self.t = deque()
         self.rate = -0.95
         self.offset = 0
-        edges = []
-        for edge in calibration_data.board_edges:
-            e = Point(*edge)
-            p = e-self.board_center
-            edges.append(e.magnitude())
-        self.r = np.mean(edges)
+        self.zeroed = False
 
-    def crop_img(self, img):
-        y = -self.board_center.y
-        x = self.board_center.x
-        r = self.r
+
+    def crop_img(self, image):
+        img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
+        y = -self.crop_center.y
+        x = self.crop_center.x
+        r = self.crop_radius
         return img[y-r:y+r, x-r:x+r]
         
 
@@ -68,48 +67,17 @@ class FishTracker(object):
 
 
     def _init_ros(self):
-        self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
+        # self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
         self.pub_results = rospy.Publisher("fish_tracker",Image, queue_size=2)
         self.image_sub = rospy.Subscriber("/cv_camera/image_raw",Image,self.find_holes)
+        self.tracker_sub = rospy.Subscriber("/cv_camera/image_raw", Image, self.track_holes)
 
-
-    def isolate_board(self):
-        pass
-
-
-    def getCircles(self, img, rad):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
-              param2=40, minRadius=25, maxRadius=35)
-
-        circles = np.uint16(np.around(circles))
-        
-        rects = []
-        for i in circles[0,:]:          
-            fish = Point(i[0], -i[1])           
-            cv2.circle(img,fish.to_image(),30,(0,255,0),2)            
-            local = fish-self.board_center      
-            rects.append(((i[0], i[1]), img[i[1]-rad:i[1]+rad, i[0]-rad:i[0]+rad]))
-        self.pub_hough.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
-        return rects
-
-
-    def find_holes(self, image):
+    def track_holes(self):
         t = image.header.stamp.to_time()
         image = self.bridge.imgmsg_to_cv2(image, "bgr8")
-        img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
-        circles = self.getCircles(img, 30)
-        locations = [c[0] for c in circles]
-        est = self.get_angle(t)
-        rospy.loginfo('looking for angle')
-        angle, results = self.get_angle_offset(self.fish_locales, locations, est)
-        rospy.loginfo('Found angle! {}'.format(angle))
-        self.calibrate(angle, t)
-        for key in results.keys():
-            index = locations.index(results[key][1])
-            self.fish_holes[index].fishy_calibration(circles[index][1])
-        fishes = self.rotate(self.fish_locales, self.get_angle(t))
+        img = self.crop_img(image)
+        angle = self.get_angle(t)
+        fishes = self.rotate(self.fish_locales, angle)
         for i in range(len(fishes)):
             location = Point(*fishes[i])+self.board_center
             x,y = location.to_image()
@@ -122,8 +90,66 @@ class FishTracker(object):
                 cv2.circle(img,location.to_image(), 30,(255,0,0),2)
 
 
+        if __name__ == "__main__":
+            self.pub_results.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
+
+
+    def isolate_board(self):
+        pass
+
+    def zero(self, locations):
+        est = 0
+        angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=0.5)
+        self.rate = 0
+        self.offset = angle
+        self.zeroed = True
+
+
+    def getCircles(self, img, rad):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
+              param2=40, minRadius=25, maxRadius=35)
+
+        circles = np.uint16(np.around(circles))
         
-        self.pub_results.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
+        rects = []
+        for i in circles[0,:]: 
+            
+            # print (i[0], i[1])       
+            fish = Point(int(i[0]), int(i[1]), from_image=True)           
+            cv2.circle(img,fish.to_image(),30,(0,255,0),2) 
+            # print 'fish {}'.format(fish)
+            # print 'center {}'.format(self.board_center)           
+            local = fish-self.board_center 
+            # print 'local {}'.format(local)     
+            rects.append((local.get_tuple(), img[i[1]-rad:i[1]+rad, i[0]-rad:i[0]+rad]))
+        return rects
+
+
+    def find_holes(self, image):
+        t = image.header.stamp.to_time()
+        image = self.bridge.imgmsg_to_cv2(image, "bgr8")
+        img = self.crop_img(image)
+        circles = self.getCircles(img, 30)
+        locations = [c[0] for c in circles]
+        est = self.get_angle(t)
+        if self.zeroed:
+            # rospy.loginfo('looking for angle')
+            angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=8)
+            if results == None:
+                rospy.loginfo('No angle found trying to reset')
+                angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=0.5)
+            else:
+                # rospy.loginfo('Found angle! {}'.format(angle))
+                self.calibrate(angle, t)
+                for key in results.keys():
+                    index = locations.index(results[key][1])
+                    self.fish_holes[index].fishy_calibration(circles[index][1])
+        else:
+            print 'Zeroing'
+            self.zero(locations)
+
 
 
     def rotate(self, l, theta):
@@ -134,20 +160,25 @@ class FishTracker(object):
         return rotated.tolist()
 
 
-    def get_angle_offset(self, ref, comp, est):
-        controller = PID(0.01, 0.0, 0.0, [-np.pi/4, np.pi/4])
-        aligned = False
+    def get_angle_offset(self, ref, comp, est, denom=8):
+        angles = np.linspace(est-np.pi/denom, est+np.pi/denom, num=1000).tolist()
+        # controller = PID(0.5, 0.01, 0.0, [-np.pi/4, np.pi/4])
+        # aligned = False
         total_err = []
-        while not aligned:
-            ref = self.rotate(ref, est)
-            res, err = self.compare_lists(ref, comp)
-            rospy.loginfo('Average Error of {}'.format(err))
-            if err > MAX_ANGLE_ERROR:
-                est = controller.update(err)
-                aligned = True
+        results = []
+        for angle in angles:
+            rotated = self.rotate(ref, angle)
+            res, err, matching = self.compare_lists(rotated, comp)
+            if matching:
+                total_err.append(err)
+                results.append(res)
             else:
-                aligned = True        
-        return est, res
+                angles.remove(angle)
+        if len(total_err) < 1:
+            return self.get_angle_offset(ref, comp, est, denom=0.5)   
+        indx = total_err.index(min(total_err))
+        # print min(total_err)
+        return angles[indx], results[indx]
         
    
 
@@ -157,7 +188,7 @@ class FishTracker(object):
         for item in comp:
             total_err = []
             for i in range(len(ref)):
-                err = abs(ref[i][0]-item[0]) + abs(ref[i][1]-item[1])
+                err = np.sqrt((ref[i][0]-item[0])**2 + (ref[i][1]-item[1])**2)
                 total_err.append(err)
                 # print 'Error of {}'.format(err)
             index = total_err.index(min(total_err))
@@ -166,12 +197,12 @@ class FishTracker(object):
                 # print 'placing item'
                 results[index] = (total_err[index], item)
             else:
-                # print 'Sorry no match'
                 matching = False
+            
         total_err = []
         for key in results.keys():
             total_err.append(results[key][0])
-        return results, np.mean(total_err)
+        return results, np.mean(total_err), matching
 
 
     def calibrate(self, angle, t):
@@ -190,7 +221,10 @@ class FishTracker(object):
                     dTheta = self.theta[i]-self.theta[i-1]
                     dt = self.t[i]-self.t[i-1]
                     rates.append(dTheta/dt)
-            rate = np.mean(rates)
+            if len(rates) >= 2:
+                rate = np.mean(rates)
+            else:
+                rate = rates[0]
             bs = []
             for i in range(0, len(self.t)-1):
                 bs.append(self.theta[i] - rate*self.t[i])

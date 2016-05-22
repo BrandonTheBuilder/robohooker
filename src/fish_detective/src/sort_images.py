@@ -175,8 +175,10 @@ class ImageSorter(object):
 
 if __name__ == '__main__':
     s = ImageSorter()
+    s.test_negative_harr()
+    s.test_positive_harr()
     
-    import IPython; IPython.embed()
+
     
 
 

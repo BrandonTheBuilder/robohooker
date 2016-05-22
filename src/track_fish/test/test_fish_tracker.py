@@ -1,4 +1,5 @@
 import unittest
+from unittest import skip
 import numpy as np
 import sys, os
 import cv2
@@ -74,22 +75,6 @@ class TestFishTracker(unittest.TestCase):
             self.assertEquals(ft.fishiness[i], i+3)
 
 
-    # def test_calibration(self):
-    #     r = 20
-    #     fh = FishHole()
-        # for i in range(10):
-        #     point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
-    #         t = i*0.2*1234543.0
-    #         fh.calibrate(point, t)
-    #     for i in range(10,20):
-    #         point = Point(r, (np.pi-np.pi*(10-i)/8)+np.pi, from_polar=True)
-    #         t = i*0.2*1234543.0
-    #         fish = fh.get_position(t)
-    #         # print 't: {}, fish: {}, point: {}'.format(t, fish, point)
-    #         self.assertEquals(abs(fish.x-point.x)<1, True)
-    #         self.assertEquals(abs(fish.y-point.y)<1, True)
-
-
     def test_fishy_calibration(self):
         fh = FishHole()
         dirname = os.path.dirname(__file__)
@@ -131,6 +116,18 @@ class TestFishTracker(unittest.TestCase):
             for rect in rects:
                 yield rect
 
+    def get_raw_img(self, bag):
+        bridge = CvBridge()
+        for topic, msg, t in bag.read_messages(topics=['/cv_camera/image_raw/']):
+            img = bridge.imgmsg_to_cv2(msg, "bgr8")
+            yield img
+
+    def get_ros_img(self, bag):
+        bridge = CvBridge()
+        for topic, msg, t in bag.read_messages(topics=['/cv_camera/image_raw/']):
+            yield msg
+
+
     def getCircles(self, img, rad):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
@@ -160,24 +157,95 @@ class TestFishTracker(unittest.TestCase):
         self.assertAlmostEquals(rot_two.angle(), np.pi/2)
 
     
-    def test_get_rotation(self):
+    def test_list_compare(self):
         ft = FishTracker()
         r = 20
-        est = (np.pi/4 - 0.1)
+        est = (np.pi/4)
         points = []
         offset = []
         for i in range(5):
             points.append(Point(r, (np.pi-np.pi*(i)/8)+np.pi, from_polar=True))
         
         ref = [a.get_tuple() for a in points]
-        full_comp = ft.rotate(ref, np.pi/4)
+        full_comp = ft.rotate(ref, -np.pi/4)
         comp = []
         for i in range(3):
             choice = random.choice(full_comp)
             full_comp.remove(choice)
             comp.append(choice)
-        r = ft.get_angle_offset(ref, comp, est)
-        import IPython; IPython.embed()
+
+        
+        full_comp = ft.rotate(ref, -np.pi/4)
+        e, r, matching = ft.compare_lists(full_comp, comp)
+        self.assertEquals(matching, True)
+        for key in e.keys():
+            self.assertEquals(full_comp[key], e[key][1])
+
+
+    def test_get_angle_offset(self):
+        ft = FishTracker()
+        angle = -np.pi/4
+        r = 20
+        est = (angle + 0.25)
+        points = []
+        offset = []
+        for i in range(5):
+            points.append(Point(r, (np.pi-np.pi*(i)/8)+np.pi, from_polar=True))
+        
+        ref = [a.get_tuple() for a in points]
+        full_comp = ft.rotate(ref, angle)
+        comp = []
+        for i in range(3):
+            choice = random.choice(full_comp)
+            full_comp.remove(choice)
+            comp.append(choice)
+
+        
+        full_comp = ft.rotate(ref, angle)
+        e, r = ft.get_angle_offset(ref, comp, est, denom=8)
+        self.assertAlmostEqual(angle, e, places = 2)
+        
+
+
+    @skip("This test is a visual confirmation")
+    def test_calibration(self):
+        ft = FishTracker()
+        BAG_NAME = '../../fish_detective/bags/2016-04-06-16-57-50.bag' #1437
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_ros_img(bag)
+        img = imgs.next()
+        cropped = ft.crop_img(img)
+        center = ft.board_center
+        cv2.circle(cropped, center.to_image(), 3, (255,0,0), 3)
+        fishes = [Point(*fish) for fish in ft.fish_locales]
+        for fish in fishes:
+            glob_fish = center+fish
+            cv2.circle(cropped, glob_fish.to_image(),30,(255,0,0),3)
+        cv2.namedWindow("Calibration")
+        cv2.startWindowThread()
+        cv2.imshow('Calibration', cropped)
+        k = cv2.waitKey(0)
+        cv2.destroyWindow('Calibration')
+
+
+    def test_find_holes(self):
+        ft = FishTracker()
+        BAG_NAME = '../../fish_detective/bags/2016-04-06-16-57-50.bag' #1437
+        bag = rosbag.Bag(BAG_NAME)
+        imgs = self.get_ros_img(bag)
+        zero = imgs.next()
+        # import IPython; IPython.embed()
+        fishes = ft.find_holes(zero)
+        cv2.namedWindow("Calibration")
+        cv2.startWindowThread()
+        cv2.imshow('Calibration', fishes)
+        k = cv2.waitKey(0)
+        one = imgs.next()
+        fishes = ft.find_holes(one)
+        cv2.imshow('Calibration', fishes)
+        k = cv2.waitKey(0)
+        cv2.destroyWindow('Calibration')
+
 
 
 

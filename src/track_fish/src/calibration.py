@@ -55,6 +55,13 @@ class Calibrator(object):
                 self.fish_index -= 1
             self.fishes[self.fish_index] = 0
             
+    def crop_img(self, image):
+            # img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
+            y = -self.center_point.y
+            x = self.center_point.x
+            r = self.r
+            return image[y-r:y+r, x-r:x+r]
+    
 
     def calibrate(self, image):
         if self.calibrating:
@@ -93,6 +100,7 @@ class Calibrator(object):
             radii = [p.magnitude() for p in loc_points]
             theta = [p.angle() for p in loc_points]
             r = np.mean(radii)
+            self.r = r
             skewed = [Point(r, t, from_polar=True)+self.center_point for t in theta]
             before = np.float32([p.to_image() for p in glob_points])
             after = np.float32([p.to_image() for p in skewed])
@@ -106,6 +114,7 @@ class Calibrator(object):
             # img = cv2.warpAffine(img,translate_matrix,(int(r*2),int(r*2)))
             while True:
                 image = copy.copy(img)
+                image = self.crop_img(image)
                 for i in range(len(self.fishes)):
                     if self.fishes[i] is not 0:
                         if i <= 2:
@@ -139,8 +148,10 @@ def main(args):
         pass
     data_file = os.path.join(os.path.dirname(__file__), 'calibration_data.py')
     calibration_data = open(data_file, 'w')
-    calibration_data.write('board_center = {} \n'.format(str(c.fishes[0])))
-    calibration_data.write('board_edges = {} \n'.format([str(c.fishes[1]), str(c.fishes[2])]))
+    calibration_data.write('board_center = {} \n'.format(c.fishes[0].get_tuple()))
+    calibration_data.write('board_edges = {} \n'.format([c.fishes[1].get_tuple(), c.fishes[2].get_tuple()]))
+    calibration_data.write('crop_center = {} \n'.format(c.center_point.get_tuple()))
+    calibration_data.write('crop_radius = {} \n'.format(c.r))
     calibration_data.write('skew_matrix = {} \n'.format(str(c.skew_matrix.tolist())))
     calibration_data.write('fishes = {} \n'.format([f.get_tuple() for f in c.fishes[3:]]))
 

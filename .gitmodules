@@ -1,3 +1,6 @@
 [submodule "src/fish_detective/src/vision"]
 	path = src/fish_detective/src/vision
 	url = ../../gibeautc/vision.git
+[submodule "src/robotics"]
+	path = src/robotics
+	url = ../../gibeautc/robotics.git

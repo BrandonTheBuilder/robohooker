@@ -231,19 +231,28 @@ class TestFishTracker(unittest.TestCase):
     def test_find_holes(self):
         ft = FishTracker()
         BAG_NAME = '../../fish_detective/bags/2016-04-06-16-57-50.bag' #1437
+        # BAG_NAME = '../../fish_detective/training/bags/three_fish.bag'
         bag = rosbag.Bag(BAG_NAME)
         imgs = self.get_ros_img(bag)
         zero = imgs.next()
         # import IPython; IPython.embed()
-        fishes = ft.find_holes(zero)
+        ft.find_holes(zero)
+        fishes = ft.track_holes(zero)
         cv2.namedWindow("Calibration")
         cv2.startWindowThread()
         cv2.imshow('Calibration', fishes)
         k = cv2.waitKey(0)
         one = imgs.next()
-        fishes = ft.find_holes(one)
+        ft.find_holes(one)
+        fishes = ft.track_holes(one)
         cv2.imshow('Calibration', fishes)
         k = cv2.waitKey(0)
+        for i in range(60):
+            im = imgs.next()
+            ft.find_holes(im)
+            fishes = ft.track_holes(im)
+            cv2.imshow('Calibration', fishes)
+            k = cv2.waitKey(1)
         cv2.destroyWindow('Calibration')
 
 

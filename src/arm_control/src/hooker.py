@@ -57,7 +57,8 @@ class Hooker(object):
 
     def grab(self):
         while self.drop_time-rospy.Time.now().to_time() >= 0:
-            rospy.loginfo("On the corner")
+            pass
+            # rospy.loginfo("On the corner")
         self.move_arm(self.current[0], self.current[1], GRAB)
         time.sleep(CATCH_WAIT)
         self.move_arm(self.current[0], self.current[1], TRAVEL)

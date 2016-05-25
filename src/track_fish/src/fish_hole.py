@@ -15,6 +15,7 @@ class FishHole(object):
     """docstring for FishHole"""
     def __init__(self):
         self.fish = True
+        self.times_fished = 0
         # super(FishHole, self).__init__()
         # self.find_fish = cv2.CascadeClassifier(CASCADE_CLASSIFIER)
         # self.fishiness = deque()

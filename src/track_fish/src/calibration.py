@@ -49,11 +49,10 @@ class Calibrator(object):
                         cv2.circle(img, self.openings[i].to_image(), 3, (0,0,255), 3)
                 cv2.imshow("FindCams", img)
                 k = cv2.waitKey(0)
-            print self.openings
             cv2.destroyWindow("FindCams")
             self.calibrated = True
             for key in self.openings.keys():
-                self.openings[key] = self.openings[key] - self.center_point
+                self.openings[key] = self.openings[key] - self.fishes[0]
 
     def find_skew(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -75,7 +74,7 @@ class Calibrator(object):
         if event == cv2.EVENT_LBUTTONDOWN:
             print 'Left Click at {}'.format((x,y))
             self.fishes[self.fish_index] = Point(x,y, from_image=True)
-            if self.fish_index < 20:
+            if self.fish_index < 23:
                 self.fish_index += 1
             else:
                 print 'Press enter to continue...'
@@ -194,7 +193,7 @@ def main(args):
     calibration_data.write('crop_center = {} \n'.format(c.center_point.get_tuple()))
     calibration_data.write('crop_radius = {} \n'.format(c.r))
     calibration_data.write('skew_matrix = {} \n'.format(str(c.skew_matrix.tolist())))
-    calibration_data.write('fishes = {} \n'.format([f.get_tuple() for f in c.fishes]))
+    calibration_data.write('fishes = {} \n'.format([f.get_tuple() for f in c.fishes[3:]]))
     calibration_data.write('openings = {} \n'.format([c.openings[key].get_tuple() for key in c.openings.keys()]))
 
 

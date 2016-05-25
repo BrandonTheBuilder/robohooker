@@ -89,7 +89,7 @@ class FishTracker(object):
         
     
     def give_fish(self, wait_time):
-        now = rospy.Time.now().to_time()
+        now = rospy.get_time()
         t = now + wait_time
         angle = self.get_angle(t)
         fishes = self.rotate(self.fish_locales, angle)
@@ -108,11 +108,11 @@ class FishTracker(object):
 
     def arm_callback(self, status):
         if status.ready:
-            wait_time = 3.0
+            wait_time = 1.5
             found = self.give_fish(wait_time)
-            while not found:
-                wait_time += 0.1
-                found = self.give_fish(wait_time)
+            # while not found:
+            #     wait_time += 0.1
+            #     found = self.give_fish(wait_time)
             
 
 

@@ -42,7 +42,7 @@ class Hooker(object):
 
     def _setup_ros(self):
         self.service = rospy.Service("catch_fish", catch, self.catch)
-        self.pub = rospy.Publisher("/arm_status", arm_status, queue_size=10)
+        self.pub = rospy.Publisher("/arm_status", arm_status, queue_size=1)
 
 
     def build_table(self):
@@ -138,10 +138,9 @@ class Hooker(object):
     def grab(self):
         if self.drop_time == 0.0:
             time.sleep(2)
-        rospy.loginfo('Wating {}'.format(self.drop_time-rospy.Time.now().to_time()))
+        
         while self.drop_time-rospy.get_time() >= 0:
-            pass
-            # rospy.loginfo("On the corner")
+            rospy.loginfo('Wating {}'.format(self.drop_time-rospy.get_time()))
         self.move_arm(self.current[0], self.current[1], GRAB)
         time.sleep(CATCH_WAIT)
         self.move_arm(self.current[0], self.current[1], TRAVEL)

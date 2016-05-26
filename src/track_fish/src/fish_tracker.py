@@ -22,7 +22,7 @@ from arm_control.msg import arm_status
 from arm_control.srv import catch
 
 # Constants
-DEQUE_SIZE = 2
+DEQUE_SIZE = 4
 MAX_ANGLE_ERROR = 0.001
 ANGLE_STEP = 0.01
 MOUTH_ERROR = 15.0
@@ -44,6 +44,7 @@ class FishTracker(object):
         self.openings = [Point(*opening) for opening in calibration_data.openings]
         self.theta = deque()
         self.t = deque()
+        self.start_time = 0.0
         self.rate = 0.0
         self.offset = 0
         self.zeroed = False
@@ -67,8 +68,18 @@ class FishTracker(object):
 
 
     def get_angle(self, t):
-        return (self.rate)*t+self.offset
+        angle = (self.rate)*t+self.offset
+        return self.reduce_angle(angle)
 
+    def reduce_angle(self, angle):
+        if angle > np.pi*2:
+            angle -= np.pi*2
+            return self.reduce_angle(angle)
+        elif angle < -np.pi*2:
+            angle += np.pi*2
+            return self.reduce_angle(angle)
+        else:
+            return angle
     
     def append(self, l, x):
         if len(l) < DEQUE_SIZE:
@@ -79,19 +90,19 @@ class FishTracker(object):
 
 
     def _init_ros(self):
-        # self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
+        self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
         self.pub_results = rospy.Publisher("fish_tracker",Image, queue_size=2)
         self.image_sub = rospy.Subscriber("/cv_camera/image_raw",Image,self.find_holes)
-        # self.tracker_sub = rospy.Subscriber("/cv_camera/image_raw", Image, self.track_holes, queue_size = 1, buff_size=2**24)
+        self.tracker_sub = rospy.Subscriber("/cv_camera/image_raw", Image, self.track_holes, queue_size = 1, buff_size=2**24)
         rospy.wait_for_service("catch_fish")
         self.arm_service = rospy.ServiceProxy('catch_fish', catch)
-        self.arm_sub = rospy.Subscriber("/arm_status", arm_status, self.arm_callback)
+        self.arm_sub = rospy.Subscriber("/arm_status", arm_status, self.arm_callback, queue_size=1)
         
     
     def give_fish(self, wait_time):
         now = rospy.get_time()
         t = now + wait_time
-        angle = self.get_angle(t)
+        angle = self.get_angle(t-self.start_time)
         fishes = self.rotate(self.fish_locales, angle)
         possible_holes = []
         for i in range(len(fishes)):
@@ -122,7 +133,7 @@ class FishTracker(object):
         t = image.header.stamp.to_time()
         image = self.bridge.imgmsg_to_cv2(image, "bgr8")
         img = self.crop_img(image)
-        angle = self.get_angle(t)
+        angle = self.get_angle(t-self.start_time)
         fishes = self.rotate(self.fish_locales, angle)
         fish_found = 0
         for i in range(len(fishes)):
@@ -130,11 +141,11 @@ class FishTracker(object):
                 location = Point(*fishes[i])
                 if self.mouth_open(location):
                     location = location + self.board_center
-                    cv2.circle(img,location.to_image(), 30,(0,255,0),2)
+                    cv2.circle(img,location.to_image(), 20,(0,255,0),2)
                     fish_found += 1
                 else:
                     location = location + self.board_center
-                    cv2.circle(img,location.to_image(), 30,(0,0,255),2)
+                    cv2.circle(img,location.to_image(), 20,(0,0,255),2)
                 # rospy.loginfo('Fish At {}'.format(location))
             # for cam in self.openings:
             #     circle = cam + self.board_center
@@ -168,18 +179,20 @@ class FishTracker(object):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
-              param2=40, minRadius=25, maxRadius=35)
+              param2=40, minRadius=15, maxRadius=35)
 
         circles = np.uint16(np.around(circles))
         
         rects = []
         for i in circles[0,:]: 
                  
-            fish = Point(int(i[0]), int(i[1]), from_image=True)           
+            fish = Point(int(i[0]), int(i[1]), from_image=True)     
+            cv2.circle(img,fish.to_image(),20,(0,255,0),2)      
             local = fish-self.board_center      
             rects.append(local.get_tuple())
+        
+        self.pub_hough.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
         return rects
-
 
     def find_holes(self, image):
         t = image.header.stamp.to_time()
@@ -188,16 +201,37 @@ class FishTracker(object):
         img = self.crop_img(image)
         circles = self.getCircles(img, 30)
         locations = [c for c in circles]
-        est = self.get_angle(t)
+        est = self.get_angle(t-self.start_time)
         if self.zeroed:
             angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=8)
             if results == None:
                 rospy.loginfo('No angle found trying to reset')
                 angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=0.5)
             self.calibrate(angle, t)
+            self.show_rotation(img, angle)
         else:
             print 'Zeroing'
             self.zero(locations)
+        
+
+
+    def show_rotation(self, img, angle):
+        fishes = self.rotate(self.fish_locales, angle)
+        fish_found = 0
+        for i in range(len(fishes)):
+            if self.fish_holes[i].is_fish():
+                location = Point(*fishes[i])
+                if self.mouth_open(location):
+                    location = location + self.board_center
+                    cv2.circle(img,location.to_image(), 20,(0,255,0),2)
+                    fish_found += 1
+                else:
+                    location = location + self.board_center
+                    cv2.circle(img,location.to_image(), 20,(0,0,255),2)
+        cv2.namedWindow("show_rotation")
+        cv2.startWindowThread()
+        cv2.imshow("show_rotation", img)
+        cv2.waitKey(33)
 
 
 
@@ -259,23 +293,20 @@ class FishTracker(object):
     def calibrate(self, angle, t):
         """
         """
+        rospy.loginfo('Rate: {} Offset: {} Sample Size {} {}'.format(self.rate, self.offset, len(self.t), angle))
         self.append(self.theta, angle)
-        self.append(self.t, t)
-        if len(self.t) < 2:
+        if len(self.t) == 0:
+            self.start_time = t
+        self.append(self.t, t-self.start_time)
+
+        if len(self.t) < DEQUE_SIZE-1:
             print 'Calibrating'
             self.rate = 0
             self.offset = angle
-        else:
-            rates = []
-            for i in range(len(self.t)):
-                if i >= 1:
-                    dTheta = self.theta[i]-self.theta[i-1]
-                    dt = self.t[i]-self.t[i-1]
-                    rates.append(dTheta/dt)
-            if len(rates) >= 2:
-                rate = np.mean(rates)
-            else:
-                rate = rates[0]
+        elif len(self.t) == DEQUE_SIZE-1:
+            
+            # rate = (self.theta[8]-self.theta[0])/(self.t[8]-self.t[0])
+            rate = (self.theta[DEQUE_SIZE-2]-self.theta[0])/(self.t[DEQUE_SIZE-2]-self.t[0])
             bs = []
             for i in range(0, len(self.t)-1):
                 bs.append(self.theta[i] - rate*self.t[i])
@@ -283,6 +314,10 @@ class FishTracker(object):
             self.rate = rate
             self.offset = b
             self.calibrated = True
+        else:
+            rate = (self.theta[DEQUE_SIZE-1]-self.theta[0])/(self.t[DEQUE_SIZE-1]-self.t[0])
+            self.rate = rate
+
 
 def main(args):
     rospy.init_node('fish_tracker')

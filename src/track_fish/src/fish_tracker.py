@@ -22,7 +22,7 @@ from arm_control.msg import arm_status
 from arm_control.srv import catch
 
 # Constants
-DEQUE_SIZE = 4
+DEQUE_SIZE = 2
 MAX_ANGLE_ERROR = 0.001
 ANGLE_STEP = 0.01
 MOUTH_ERROR = 15.0
@@ -90,10 +90,10 @@ class FishTracker(object):
 
 
     def _init_ros(self):
-        self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
-        self.pub_results = rospy.Publisher("fish_tracker",Image, queue_size=2)
+        # self.pub_hough = rospy.Publisher("hough_image",Image, queue_size=2)
+        # self.pub_results = rospy.Publisher("fish_tracker",Image, queue_size=2)
         self.image_sub = rospy.Subscriber("/cv_camera/image_raw",Image,self.find_holes)
-        self.tracker_sub = rospy.Subscriber("/cv_camera/image_raw", Image, self.track_holes, queue_size = 1, buff_size=2**24)
+        # self.tracker_sub = rospy.Subscriber("/cv_camera/image_raw", Image, self.track_holes, queue_size = 1, buff_size=2**24)
         rospy.wait_for_service("catch_fish")
         self.arm_service = rospy.ServiceProxy('catch_fish', catch)
         self.arm_sub = rospy.Subscriber("/arm_status", arm_status, self.arm_callback, queue_size=1)
@@ -115,12 +115,13 @@ class FishTracker(object):
         possible_holes[0][1].times_fished += 1
         x = possible_holes[0][0][0]*self.conversition
         y = possible_holes[0][0][1]*self.conversition
-        return self.arm_service(float(x), float(y), float(t))
+        return self.arm_service(float(x), float(y), float(wait_time-0.1))
 
     def arm_callback(self, status):
         if status.ready:
-            wait_time = 1.5
+            wait_time = 5.0
             found = self.give_fish(wait_time)
+            rospy.loginfo('Arm_Status: {}'.format(found))
             # while not found:
             #     wait_time += 0.1
             #     found = self.give_fish(wait_time)
@@ -191,12 +192,11 @@ class FishTracker(object):
             local = fish-self.board_center      
             rects.append(local.get_tuple())
         
-        self.pub_hough.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
+        # self.pub_hough.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
         return rects
 
     def find_holes(self, image):
         t = image.header.stamp.to_time()
-        print 'Finding Holes'
         image = self.bridge.imgmsg_to_cv2(image, "bgr8")
         img = self.crop_img(image)
         circles = self.getCircles(img, 30)
@@ -208,7 +208,7 @@ class FishTracker(object):
                 rospy.loginfo('No angle found trying to reset')
                 angle, results = self.get_angle_offset(self.fish_locales, locations, est, denom=0.5)
             self.calibrate(angle, t)
-            self.show_rotation(img, angle)
+            # self.show_rotation(img, angle)
         else:
             print 'Zeroing'
             self.zero(locations)
@@ -293,20 +293,23 @@ class FishTracker(object):
     def calibrate(self, angle, t):
         """
         """
-        rospy.loginfo('Rate: {} Offset: {} Sample Size {} {}'.format(self.rate, self.offset, len(self.t), angle))
         self.append(self.theta, angle)
-        if len(self.t) == 0:
-            self.start_time = t
-        self.append(self.t, t-self.start_time)
-
-        if len(self.t) < DEQUE_SIZE-1:
+        self.append(self.t, t)
+        if len(self.t) < 2:
             print 'Calibrating'
             self.rate = 0
             self.offset = angle
-        elif len(self.t) == DEQUE_SIZE-1:
-            
-            # rate = (self.theta[8]-self.theta[0])/(self.t[8]-self.t[0])
-            rate = (self.theta[DEQUE_SIZE-2]-self.theta[0])/(self.t[DEQUE_SIZE-2]-self.t[0])
+        else:
+            rates = []
+            for i in range(len(self.t)):
+                if i >= 1:
+                    dTheta = self.theta[i]-self.theta[i-1]
+                    dt = self.t[i]-self.t[i-1]
+                    rates.append(dTheta/dt)
+            if len(rates) >= 2:
+                rate = np.mean(rates)
+            else:
+                rate = rates[0]
             bs = []
             for i in range(0, len(self.t)-1):
                 bs.append(self.theta[i] - rate*self.t[i])
@@ -314,9 +317,6 @@ class FishTracker(object):
             self.rate = rate
             self.offset = b
             self.calibrated = True
-        else:
-            rate = (self.theta[DEQUE_SIZE-1]-self.theta[0])/(self.t[DEQUE_SIZE-1]-self.t[0])
-            self.rate = rate
 
 
 def main(args):

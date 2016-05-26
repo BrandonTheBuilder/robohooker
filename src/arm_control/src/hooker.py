@@ -8,18 +8,18 @@ import serial
 import sys
 
 PORT='/dev/ttyACM0'
-WAIT = 2
-TRAVEL = 6
-GRAB = -2
+WAIT = -4
+TRAVEL = 0
+GRAB = -8
 CATCH_WAIT = 0.5
-FISH_PILE = [-8, 18, 2]
-SET_FISH = [-8, 18, -4]
+FISH_PILE = [-15, -15, -6]
+SET_FISH = [-15, -15, -10]
 
 A=9.1
 F=16.5
 L=13.3
 PI=3.14159
-Tr_off=90
+Tr_off=45
 T1_off=0
 T2_off=45
 #end constant defs
@@ -46,29 +46,59 @@ class Hooker(object):
 
 
     def build_table(self):
-        self.Table = [[[Pos() for j in range(181)] for i in range(181)] for k in range(181)]
-        rospy.loginfo('Building Table')
-        for i in range(0,181):
-            rospy.loginfo('---')
-            for j in range(0,91):
-                for k in range(0,91):
-                    iR=float(i-Tr_off)/360*2*PI
-                    jR=float(j-T1_off)/360*2*PI
-                    kR=float(k-T2_off)/360*2*PI
+        maxX=-100
+        maxY=-100
+        maxZ=-100
 
-                    D=A*math.cos(jR)+A*math.cos(kR)+F
-                    self.Table[i][j][k].y=math.cos(iR)*D
-                    self.Table[i][j][k].x=math.sin(iR)*D-25.35
-                    self.Table[i][j][k].z=A*math.sin(jR)+A*math.sin(kR)-L+12.9
-                    #print ("X: " + str(Table[i][j][k].x) +" Y: " + str(Table[i][j][k].y) +" Z: " + str(Table[i][j][k].z))
-        rospy.loginfo('Table finished!')
+        minX=100
+        minY=100
+        minZ=100
+        self.Table = [[[Pos() for j in range(91)] for i in range(121)] for k in range(91)]
+        rospy.loginfo('Building Table')
+        for i in range(0,91):
+            rospy.loginfo('---')
+            for j in range(0,121):
+                for k in range(0,91):
+                    iR=(float(i-Tr_off)/360)*2*PI
+                    jR=(float(j-T1_off)/360)*2*PI
+                    kR=(float(k-T2_off)/360)*2*PI
+
+                    D=A+A*math.cos(jR)+F*math.cos(kR)
+                    self.Table[i][j][k].y=math.cos(iR)*D-25.59
+                    self.Table[i][j][k].x=math.sin(iR)*D   #-15.35
+                    self.Table[i][j][k].z=A*math.sin(jR)+F*math.sin(kR)-L+3.98
+
+                    if self.Table[i][j][k].y>maxY:
+                        maxY=self.Table[i][j][k].y
+                    if self.Table[i][j][k].y<minY:
+                        minY=self.Table[i][j][k].y
+                        
+                    if self.Table[i][j][k].x>maxX:
+                        maxX=self.Table[i][j][k].x
+                    if self.Table[i][j][k].x<minX:
+                        minX=self.Table[i][j][k].x
+                        
+                    if self.Table[i][j][k].z>maxZ:
+                        maxZ=self.Table[i][j][k].z
+                    if self.Table[i][j][k].z<minZ:
+                        minZ=self.Table[i][j][k].z
+                    
+                       
+                        #print ("X: " + str(Table[i][j][k].x) +" Y: " + str(Table[i][j][k].y) +" Z: " + str(Table[i][j][k].z))
+        self.max_x = maxX
+        self.min_x = minX
+        self.max_y = maxY
+        self.min_y = minY
+        self.max_z = maxZ
+        self.min_z = minZ
+        rospy.loginfo("Table Complete")
 
 
     def lookup(self, nx,ny,nz):
         deltaLow=10;
         # print ("Looking for X: " + str(nx) +" Y: " + str(ny) +" Z: " + str(nz))
-        for i in range(0,181):
-            for j in range(0,91):
+        for i in range(0,91):
+            for j in range(0,120):
                 for k in range(0,91):
                     
                     if abs(nx-self.Table[i][j][k].x)<delta and abs(ny-self.Table[i][j][k].y)<delta and abs(nz-self.Table[i][j][k].z)<delta:
@@ -81,9 +111,9 @@ class Hooker(object):
                             Pj=j
                             Pk=k
                         
-        if deltaLow<1:
+        if deltaLow<2:
             # print("Delta of: "+str(deltaLow))
-            out=str(Pi-Tr_off)+","+str(Pj-T1_off)+","+str(Pk-T2_off)
+            out=str(Pi+Tr_off)+","+str(Pj-T1_off)+","+str(Pk-T2_off)
             # print("Found it: Tr-> "+ str(Pi-Tr_off) + " T1-> " + str(Pj-T1_off) + " T2-> " + str(Pk-T2_off))
             rospy.loginfo(out)
             self.ser.write(bytearray(out,'utf-8'))
@@ -104,7 +134,7 @@ class Hooker(object):
 
 
     def publish_updates(self):
-        rate = rospy.Rate(10)
+        rate = rospy.Rate(30)
         while not rospy.is_shutdown():
             status = arm_status()
             status.status = self.status
@@ -118,13 +148,27 @@ class Hooker(object):
     def catch(self, msg):
         self.ready = False
         self.status = "Positioning"
-        self.drop_time = msg.time
-        self.position(msg.x, msg.y)
-        return True
+        self.drop_time = msg.time + rospy.get_time()
+        # if self.drop_time - rospy.get_time() >= 5.0:
+        #     rospy.logwarn('Wait time too long')
+        #     self.ready = True
+        #     return False
+        if msg.x > self.max_x or msg.x < self.min_x:
+            rospy.logwarn('x out of bounds')
+            self.ready = True
+            return False
+        elif msg.y > self.max_y or msg.y < self.min_y:
+            rospy.logwarn('y out of bounds')
+            self.ready = True
+            return False
+        else:
+            self.position(msg.x, msg.y)
+            return True
 
 
     def home(self):
-        self.move_arm(0, 0, 4)
+        self.move_arm(0.0, 0.0, 0.0)
+        time.sleep(1)
         self.status = 'home'
         self.ready = True
 
@@ -136,8 +180,8 @@ class Hooker(object):
 
 
     def grab(self):
-        if self.drop_time == 0.0:
-            time.sleep(2)
+        # if self.drop_time == 0.0:
+        #     time.sleep(2)
         
         while self.drop_time-rospy.get_time() >= 0:
             rospy.loginfo('Wating {}'.format(self.drop_time-rospy.get_time()))
@@ -151,6 +195,9 @@ class Hooker(object):
     def drop(self):
         self.move_arm(*FISH_PILE)
         self.move_arm(*SET_FISH)
+        self.move_arm(*FISH_PILE)
+        self.move_arm(*SET_FISH)
+        self.move_arm(*FISH_PILE)
         self.home()
 
         

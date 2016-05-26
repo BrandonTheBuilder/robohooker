@@ -101,7 +101,7 @@ class FishTracker(object):
     
     def give_fish(self, wait_time):
         now = rospy.get_time()
-        t = now + wait_time
+        t = now + wait_time #-0.27
         angle = self.get_angle(t-self.start_time)
         fishes = self.rotate(self.fish_locales, angle)
         possible_holes = []
@@ -115,7 +115,9 @@ class FishTracker(object):
         possible_holes[0][1].times_fished += 1
         x = possible_holes[0][0][0]*self.conversition
         y = possible_holes[0][0][1]*self.conversition
-        return self.arm_service(float(x), float(y), float(wait_time-0.1))
+        x = x + abs(x)/x*1.5
+        y = y + abs(y)/x*2.0
+        return self.arm_service(float(x), float(y), float(wait_time))
 
     def arm_callback(self, status):
         if status.ready:

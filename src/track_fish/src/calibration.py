@@ -156,7 +156,7 @@ class Calibrator(object):
                         if i <= 2:
                             cv2.circle(image, self.fishes[i].to_image(), 3, (255,0,0), 3)
                         else:
-                            cv2.circle(image, self.fishes[i].to_image(),30,(255,0,0),3)
+                            cv2.circle(image, self.fishes[i].to_image(),20,(255,0,0),3)
 
                 cv2.imshow('Calibration', image)
                 k = cv2.waitKey(33)

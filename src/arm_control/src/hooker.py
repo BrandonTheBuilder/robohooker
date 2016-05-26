@@ -11,7 +11,7 @@ PORT='/dev/ttyACM0'
 WAIT = -4
 TRAVEL = 0
 GRAB = -8
-CATCH_WAIT = 0.5
+CATCH_WAIT = 0.25
 FISH_PILE = [-15, -15, -6]
 SET_FISH = [-15, -15, -10]
 
@@ -95,6 +95,9 @@ class Hooker(object):
 
 
     def lookup(self, nx,ny,nz):
+        self.current = [nx,ny,nz]
+        rospy.logwarn('Moved to {}'.format(self.current))
+
         deltaLow=10;
         # print ("Looking for X: " + str(nx) +" Y: " + str(ny) +" Z: " + str(nz))
         for i in range(0,91):
@@ -115,11 +118,7 @@ class Hooker(object):
             # print("Delta of: "+str(deltaLow))
             out=str(Pi+Tr_off)+","+str(Pj-T1_off)+","+str(Pk-T2_off)
             # print("Found it: Tr-> "+ str(Pi-Tr_off) + " T1-> " + str(Pj-T1_off) + " T2-> " + str(Pk-T2_off))
-            rospy.loginfo(out)
-            self.ser.write(bytearray(out,'utf-8'))
-            time.sleep(1)
-            rece='NO'
-            received= str(self.ser.readline())
+            
             # if(sys.getsizeof(received)>52):
             #     rece=received[2]+received[3]
             # if(rece=='OK'):
@@ -129,7 +128,7 @@ class Hooker(object):
             #     print("Reseting....."+str(self.resetCount))
             #     self.ser.close()
             #     self.ser.open()
-            return
+            return out
         print("Point not found...")
 
 
@@ -167,46 +166,58 @@ class Hooker(object):
 
 
     def home(self):
-        self.move_arm(0.0, 0.0, 0.0)
+        # out = self.lookup(0.0, 0.0, 0.0)
+        out = self.lookup(0.0, 0.0, 0.0)
+        self.move_arm(out)
         time.sleep(1)
         self.status = 'home'
         self.ready = True
 
 
     def position(self, x, y):
-        self.move_arm(x, y, WAIT)
+        out = self.lookup(x, y, WAIT)
+        self.move_arm(out)
         self.status = "Waiting"
-        self.grab()
+        self.grab(x,y)
 
 
-    def grab(self):
+    def grab(self, x, y):
         # if self.drop_time == 0.0:
         #     time.sleep(2)
-        
+        out = self.lookup(x, y, GRAB)
         while self.drop_time-rospy.get_time() >= 0:
             rospy.loginfo('Wating {}'.format(self.drop_time-rospy.get_time()))
-        self.move_arm(self.current[0], self.current[1], GRAB)
+        self.move_arm(out)
         time.sleep(CATCH_WAIT)
-        self.move_arm(self.current[0], self.current[1], TRAVEL)
+        out = self.lookup(self.current[0], self.current[1], TRAVEL)
+        self.move_arm(out)
         self.status = "Dropping"
         self.drop()
 
 
     def drop(self):
-        self.move_arm(*FISH_PILE)
-        self.move_arm(*SET_FISH)
-        self.move_arm(*FISH_PILE)
-        self.move_arm(*SET_FISH)
-        self.move_arm(*FISH_PILE)
+        out = self.lookup(*FISH_PILE)
+        self.move_arm(out)
+        out = self.lookup(*SET_FISH)
+        self.move_arm(out)
+        out = self.lookup(*FISH_PILE)
+        self.move_arm(out)
+        out = self.lookup(*SET_FISH)
+        self.move_arm(out)
+        out = self.lookup(*FISH_PILE)
+        self.move_arm(out)
         self.home()
 
         
 
-    def move_arm(self, x, y, z):
-        self.lookup(x,y,z)
-        self.current = [x,y,z]
-        rospy.logwarn('Moved to {}'.format(self.current))
-
+    def move_arm(self, out):
+        # self.lookup(x,y,z)
+        rospy.loginfo(out)
+        self.ser.write(bytearray(out,'utf-8'))
+        time.sleep(1)
+        rece='NO'
+        received= str(self.ser.readline())
+        # 
 
 if __name__ == '__main__':
     rospy.init_node('arm_control')

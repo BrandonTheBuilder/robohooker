@@ -12,6 +12,7 @@ from point import Point
 import fish_hole as fsh
 from fish_hole import FishHole
 from fish_tracker import FishTracker
+from calibration import Calibrator
 
 
 class TestFishTracker(unittest.TestCase):
@@ -138,6 +139,8 @@ class TestFishTracker(unittest.TestCase):
             rects.append(img[i[1]-rad:i[1]+rad, i[0]-rad:i[0]+rad])
         return rects
 
+
+
     def test_rotation(self):
         ft = FishTracker()
         r = 20
@@ -207,25 +210,45 @@ class TestFishTracker(unittest.TestCase):
         
 
 
-    @skip("This test is a visual confirmation")
+    def test_get_blobs(self):
+        c = Calibrator()
+        test = np.array([[0,1,0,0,0],
+                         [1,1,1,0,0],
+                         [0,1,0,0,0],
+                         [0,0,0,0,0],
+                         [0,0,0,1,1]])
+        blobs = c.get_blobs(test)
+        self.assertEquals(2, len(blobs))
+        test = np.array([[0,1,0,0,1],
+                         [1,1,0,0,1],
+                         [0,1,0,0,0],
+                         [0,0,0,0,0],
+                         [0,0,0,1,1]])
+        blobs = c.get_blobs(test)
+        self.assertEquals(3, len(blobs))
+
+    # @skip("This test is a visual confirmation")
     def test_calibration(self):
-        ft = FishTracker()
+        c = Calibrator()
         BAG_NAME = '../../fish_detective/bags/2016-04-06-16-57-50.bag' #1437
         bag = rosbag.Bag(BAG_NAME)
-        imgs = self.get_ros_img(bag)
+        imgs = self.get_raw_img(bag)
         img = imgs.next()
-        cropped = ft.crop_img(img)
-        center = ft.board_center
-        cv2.circle(cropped, center.to_image(), 3, (255,0,0), 3)
-        fishes = [Point(*fish) for fish in ft.fish_locales]
-        for fish in fishes:
-            glob_fish = center+fish
-            cv2.circle(cropped, glob_fish.to_image(),30,(255,0,0),3)
-        cv2.namedWindow("Calibration")
-        cv2.startWindowThread()
-        cv2.imshow('Calibration', cropped)
-        k = cv2.waitKey(0)
-        cv2.destroyWindow('Calibration')
+        c.auto_calibrate(img)
+
+
+        # cropped = ft.crop_img(img)
+        # center = ft.board_center
+        # cv2.circle(cropped, center.to_image(), 3, (255,0,0), 3)
+        # fishes = [Point(*fish) for fish in ft.fish_locales]
+        # for fish in fishes:
+        #     glob_fish = center+fish
+        #     cv2.circle(cropped, glob_fish.to_image(),30,(255,0,0),3)
+        # cv2.namedWindow("Calibration")
+        # cv2.startWindowThread()
+        # cv2.imshow('Calibration', cropped)
+        # k = cv2.waitKey(0)
+        # cv2.destroyWindow('Calibration')
 
 
     def test_find_holes(self):

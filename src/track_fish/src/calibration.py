@@ -5,6 +5,9 @@ import sys, os
 import time
 import numpy as np
 import copy
+import imutils
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from shapefinder import ShapeDetector
 
 # opencv imports
 import cv2
@@ -31,6 +34,233 @@ class Calibrator(object):
     def _init_ros(self):
         self.image_sub = rospy.Subscriber("/cv_camera/image_raw",Image,self.calibrate)
         rospy.Subscriber("/cv_camera/image_raw", Image, self.find_cams)
+
+    
+    def get_detector(self):
+        # Setup SimpleBlobDetector parameters.
+        params = cv2.SimpleBlobDetector_Params()
+         
+        # Change thresholds
+        # params.filterByColor = True
+        # params.blobColor = 255
+        params.minThreshold = 100;
+        params.maxThreshold = 255;
+         
+        # Filter by Area.
+        params.filterByArea = True
+        params.minArea = 2000
+         
+        # Filter by Circularity
+        params.filterByCircularity = False
+        # params.minCircularity = 0.1
+         
+        # Filter by Convexity
+        params.filterByConvexity = False
+        # params.minConvexity = 0.87
+         
+        # Filter by Inertia
+        params.filterByInertia = False
+        # params.minInertiaRatio = 0.01
+         
+        # Create a detector with the parameters
+        ver = (cv2.__version__).split('.')
+        if int(ver[0]) < 3 :
+            detector = cv2.SimpleBlobDetector(params)
+        else : 
+            detector = cv2.SimpleBlobDetector_create(params)
+        return detector
+
+
+    def auto_calibrate(self, image):
+        color_space = [([125, 100, 45], [255, 200, 150]), ([0, 200, 200], [100, 240, 240])] #(blue,yellow) #yello:([0, 200, 200], [100, 240, 240])
+        ratio = 1
+        blue_lower, blue_upper = color_space[0]
+        thresh = self.threshhold(blue_lower, blue_upper, image)
+        
+        yellow_lower, yellow_upper = color_space[1]
+        yellow_thresh = self.threshhold(yellow_lower, yellow_upper, image)
+        yellow_blobs = self.get_blobs(yellow_thresh)
+        yel_len = [len(a) for a in yellow_blobs]
+        indx = yel_len.index(max(yel_len))
+        yellow = yellow_blobs[indx]
+        yell_centroid = self.get_center(*[Point(*a, from_image=True) for a in yellow])
+
+        blobs = self.get_blobs(thresh)
+        lengths = [len(a) for a in blobs]
+        indx = lengths.index(max(lengths))
+        blob = blobs[indx]
+
+        xmax = Point(*max(blob, key=lambda p: p[0]), from_image=True)
+        xmin = Point(*min(blob, key=lambda p: p[0]), from_image=True)
+        ymax = Point(*max(blob, key=lambda p: p[1]), from_image=True)
+        ymin = Point(*min(blob, key=lambda p: p[1]), from_image=True)
+        # center = self.get_center(*[Point(*b, from_image=True) for b in blob])
+        glob_points = [xmax, xmin, ymax, ymin]
+        center = self.get_center(*glob_points)
+        self.center_point = center
+        self.check_center(image)
+        loc_points = [p-self.center_point for p in glob_points]
+        radii = [p.magnitude() for p in loc_points[:2]]
+        theta = [p.angle() for p in loc_points]
+        r = np.mean(radii)
+        self.r = r
+        skewed = [Point(r, t, from_polar=True)+self.center_point for t in theta]
+        before = np.float32([p.to_image() for p in glob_points])
+        after = np.float32([p.to_image() for p in skewed])
+        self.center_point = self.get_center(*skewed)
+        self.skew_matrix = cv2.getPerspectiveTransform(before, after)
+        
+        img = self.crop_img(image)
+
+        y,x,c = img.shape
+        self.center_point = Point(float(x)/2, float(y)/2, from_image=True)
+        self.check_center(img)
+        self.get_fish(img)
+
+
+    def get_fish(self, image):
+        cv2.namedWindow("Fish")
+        cv2.startWindowThread()
+        cv2.setMouseCallback("Fish", self._get_fish)
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        circles = cv2.HoughCircles(img,cv.CV_HOUGH_GRADIENT,0.5,70,param1=10,
+              param2=40, minRadius=15, maxRadius=35)
+        circles = np.uint16(np.around(circles))
+        self.fish = []
+        for i in circles[0,:]: 
+            fish = Point(int(i[0]), int(i[1]), from_image=True)     
+            local = fish-self.center_point      
+            self.fish.append(local)
+        while True:
+            img = copy.copy(image)
+            if len(self.fish) is not 0:
+                for fish in self.fish:
+                    location = fish + self.center_point
+                    cv2.circle(img, location.to_image(),25,(0,255,0),3)
+            cv2.imshow('Fish', img)
+            k = cv2.waitKey(33)
+            if k==10:
+                if len(self.fish) < 21:
+                    print 'Please select all 21 fish'
+                else:
+                    break
+            elif k==-1:
+                pass
+            else:
+                print k
+                print 'Press Enter to continue..'
+        cv2.destroyWindow('Fish')
+
+
+    def _get_fish(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if len(self.fish) < 21:
+                fish = Point(x,y,from_image=True)
+                self.fish.append(fish-self.center_point)
+            else:
+                print 'Press enter to contiue or remove a fish to replace'
+            
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            target = Point(x,y,from_image=True)-self.center_point
+            for fish in self.fish:
+                if (target-fish).magnitude() < 25:
+                    self.fish.remove(fish)
+            
+        
+
+    def threshhold(self, lower, upper, image):
+         # create NumPy arrays from the boundaries
+        lower = np.array(lower, dtype = "uint8")
+        upper = np.array(upper, dtype = "uint8")
+        # find the colors within the specified boundaries and apply
+        # the mask
+        mask = cv2.inRange(image, lower, upper)
+        output = cv2.bitwise_and(image, image, mask = mask)
+        # convert the resized image to grayscale, blur it slightly,
+        # and threshold it
+        gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)[1]
+        return thresh
+
+
+    def check_center(self, image):
+        cv2.namedWindow("Center")
+        cv2.startWindowThread()
+        cv2.setMouseCallback("Center", self._check_center)
+        while True:
+            center = self.center_point
+            img = copy.copy(image)
+            if center is not 0:
+                cv2.circle(img, center.to_image(),3,(255,0,0),3)
+            cv2.imshow('Center', img)
+            k = cv2.waitKey(33)
+            if k==10:
+                # enter pressed
+                break
+            elif k==-1:
+                pass
+            else:
+                print k
+                print 'Press Enter to continue..'
+        cv2.destroyWindow('Center')
+
+
+    def _check_center(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.center_point = Point(x,y, from_image=True)
+
+
+      
+
+
+    def get_center(self, *args):
+        x = 0 
+        y = 0 
+        num = 0
+        for arg in args:
+            x += arg.x
+            y += arg.y
+            num += 1
+        return Point(float(x)/num,float(y)/num)
+
+    def get_blobs(self, img):
+        blob_points = set()
+        blobs = []
+        blob_index = 0
+        xmax = img.shape[1]
+        ymax = img.shape[0]
+        for y in range(ymax):
+            for x in range(xmax):
+                if (x,y) not in blob_points:
+                    val = img[y,x]
+                    if val != 0:
+                        blob = set()
+                        blob.add((x,y))
+                        checked = set()
+                        checked.add((x,y))
+                        to_check = set()
+                        i = x
+                        j = y
+                        neighbors = [(i-1,j),(i,j-1),(i-1,j-1),(i+1,j),(i,j+1),(i+1,j+1),(i-1,j+1),(i+1,j-1)]
+                        neighbors = [n for n in neighbors if n[0] < xmax and n[1] < ymax and n[0] >= 0 and n[1] >= 0]
+                        to_check.update([n for n in neighbors if n not in checked])
+                        while len(to_check) > 0:
+                            point = to_check.pop()
+                            i,j = point
+                            checked.add(point)
+                            # print checked
+                            val = img[point[1], point[0]]
+                            if val != 0:
+                                blob.add(point)
+                                neighbors = [(i-1,j),(i,j-1),(i-1,j-1),(i+1,j),(i,j+1),(i+1,j+1),(i-1,j+1),(i+1,j-1)]
+                                neighbors = [n for n in neighbors if n[0] < xmax and n[1] < ymax and n[0] >= 0 and n[1] >= 0]
+                                to_check.update([n for n in neighbors if n not in checked])
+                        blobs.append(blob)
+                        blob_points.update(blob)
+                        blob_index += 1
+        return blobs
+
 
     def find_cams(self, frame):
         if len(self.images) <= CALIBRATION_LENGTH:
@@ -68,7 +298,6 @@ class Calibrator(object):
                 self.skew_index -= 1
             self.skew_points[self.skew_index] = 0
             
-
     
     def find_fish(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -97,7 +326,7 @@ class Calibrator(object):
 
 
     def crop_img(self, image):
-            # img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
+            img = cv2.warpPerspective(image, self.skew_matrix, (700, 700))
             y = -self.center_point.y
             x = self.center_point.x
             r = self.r

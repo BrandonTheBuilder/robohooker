@@ -39,6 +39,8 @@ class Point(object):
     def __cmp__(self, other):
         if self.x == other.x and self.y == other.y:
             return 0
+        else:
+            return -1
 
     def __str__(self):
         return '({},{})'.format(self.x, self.y)

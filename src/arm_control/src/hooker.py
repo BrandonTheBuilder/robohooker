@@ -32,9 +32,10 @@ class Pos:
 
 class Hooker(object):
     def __init__(self):
+        self.ser= serial.Serial(PORT, 115200, timeout=10)
         self.build_table()
         self.resetCount = 0
-        self.ser= serial.Serial(PORT, 115200,timeout=1)
+        time.sleep(3)
         self.home()
         if __name__ == '__main__':
             self._setup_ros()
@@ -168,8 +169,7 @@ class Hooker(object):
     def home(self):
         # out = self.lookup(0.0, 0.0, 0.0)
         out = self.lookup(0.0, 0.0, 0.0)
-        self.move_arm(out)
-        time.sleep(1)
+        self.move_arm(out, timeout=20)
         self.status = 'home'
         self.ready = True
 
@@ -192,32 +192,30 @@ class Hooker(object):
         out = self.lookup(self.current[0], self.current[1], TRAVEL)
         self.move_arm(out)
         self.status = "Dropping"
-        self.drop()
-
-
-    def drop(self):
-        out = self.lookup(*FISH_PILE)
-        self.move_arm(out)
-        out = self.lookup(*SET_FISH)
-        self.move_arm(out)
-        out = self.lookup(*FISH_PILE)
-        self.move_arm(out)
-        out = self.lookup(*SET_FISH)
-        self.move_arm(out)
-        out = self.lookup(*FISH_PILE)
-        self.move_arm(out)
         self.home()
-
         
 
-    def move_arm(self, out):
+    def move_arm(self, out, timeout=10):
         # self.lookup(x,y,z)
         rospy.loginfo(out)
-        self.ser.write(bytearray(out,'utf-8'))
-        time.sleep(1)
-        rece='NO'
-        received= str(self.ser.readline())
-        # 
+        try:
+            self.ser.write(bytearray(out,'utf-8'))
+        except:
+            rospy.logerr('Writing Arm Command Failed')
+            return
+        # time.sleep(1)
+        response = 'NO'
+        start = rospy.get_time()
+        try:
+            while response != 'OK': 
+                response = str(self.ser.read(2))
+                rospy.loginfo(response)
+                if rospy.get_time() - start > timeout:
+                    print "No OK received"
+                    break
+        except Exception as ex: 
+            print "Failed to read response {}".format(ex)
+        
 
 if __name__ == '__main__':
     rospy.init_node('arm_control')

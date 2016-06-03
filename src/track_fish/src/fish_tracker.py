@@ -22,7 +22,6 @@ from arm_control.msg import arm_status
 from arm_control.srv import catch
 
 # Constants
-DEQUE_SIZE = 2
 MAX_ANGLE_ERROR = 0.001
 ANGLE_STEP = 0.01
 MOUTH_ERROR = 15.0
@@ -34,20 +33,21 @@ class FishTracker(object):
     def __init__(self):
         self.bridge = CvBridge()
         self.skew_matrix = np.float32(calibration_data.skew_matrix)
-        self.fish_locales = calibration_data.fishes
+        self.fish_locales = calibration_data.fish
         # self.fish_locales.sort(key=lambda loc: sum(loc))
         # self.fish_locales = np.matrix(self.fish_locales)
         self.fish_holes = [FishHole() for i in range(len(self.fish_locales))]
-        self.board_center = Point(*calibration_data.board_center)
-        self.crop_center = Point(*calibration_data.crop_center)
-        self.crop_radius = calibration_data.crop_radius
-        self.openings = [Point(*opening) for opening in calibration_data.openings]
+        self.board_center = Point(*calibration_data.center_point)
+        self.crop_center = Point(*calibration_data.board_center)
+        self.crop_radius = calibration_data.board_radius
+        self.openings = [Point(*opening) for opening in calibration_data.cams]
         self.theta = deque()
         self.t = deque()
         self.start_time = 0.0
         self.rate = 0.0
         self.offset = 0
         self.zeroed = False
+        self.calibrated = False
         rs = []
         for edge in calibration_data.board_edges:
             edge = Point(*edge)
@@ -55,8 +55,6 @@ class FishTracker(object):
             rs.append(diff.magnitude())
         r = np.mean(rs)
         self.conversition = float(BOARD_RADIUS)/r
-
-
 
 
     def crop_img(self, image):
@@ -71,6 +69,7 @@ class FishTracker(object):
         angle = (self.rate)*t+self.offset
         return self.reduce_angle(angle)
 
+
     def reduce_angle(self, angle):
         if angle > np.pi*2:
             angle -= np.pi*2
@@ -81,8 +80,9 @@ class FishTracker(object):
         else:
             return angle
     
-    def append(self, l, x):
-        if len(l) < DEQUE_SIZE:
+
+    def append(self, l, x, size=2):
+        if len(l) < size:
             l.append(x)
         else:
             l.popleft()
@@ -106,18 +106,21 @@ class FishTracker(object):
         fishes = self.rotate(self.fish_locales, angle)
         possible_holes = []
         for i in range(len(fishes)):
-            if self.mouth_open(Point(*fishes[i])):
-                possible_holes.append((fishes[i] ,self.fish_holes[i]))
+            mouth_open, cam = self.mouth_open(Point(*fishes[i]))
+            if mouth_open:
+                possible_holes.append((cam.get_tuple() ,self.fish_holes[i]))
         if len(possible_holes)< 1:
             rospy.logwarn('No holes found')
             return False
         possible_holes.sort(key=lambda hole: hole[1].times_fished)
-        possible_holes[0][1].times_fished += 1
-        x = possible_holes[0][0][0]*self.conversition
-        y = possible_holes[0][0][1]*self.conversition
+        target = possible_holes.pop()
+        target[1].times_fished += 1
+        x = target[0][0]*self.conversition
+        y = target[0][1]*self.conversition
         x = x + abs(x)/x*1.5
         y = y + abs(y)/x*2.0
-        return self.arm_service(float(x), float(y), float(wait_time))
+        return self.arm_service(float(x), float(y), float(wait_time+0.1))
+
 
     def arm_callback(self, status):
         if status.ready:
@@ -128,8 +131,6 @@ class FishTracker(object):
             #     wait_time += 0.1
             #     found = self.give_fish(wait_time)
             
-
-
 
     def track_holes(self, image):
         rospy.loginfo('Tracking Fish')
@@ -163,12 +164,9 @@ class FishTracker(object):
         for mouth in self.openings:
             err = location - mouth
             if err.magnitude() < MOUTH_ERROR:
-                return True
-        return False
+                return True, mouth
+        return False, None
 
-
-    def isolate_board(self):
-        pass
 
     def zero(self, locations):
         est = 0
@@ -197,6 +195,7 @@ class FishTracker(object):
         # self.pub_hough.publish(self.bridge.cv2_to_imgmsg(img, "8UC1"))
         return rects
 
+
     def find_holes(self, image):
         t = image.header.stamp.to_time()
         image = self.bridge.imgmsg_to_cv2(image, "bgr8")
@@ -216,7 +215,6 @@ class FishTracker(object):
             self.zero(locations)
         
 
-
     def show_rotation(self, img, angle):
         fishes = self.rotate(self.fish_locales, angle)
         fish_found = 0
@@ -234,7 +232,6 @@ class FishTracker(object):
         cv2.startWindowThread()
         cv2.imshow("show_rotation", img)
         cv2.waitKey(33)
-
 
 
     def rotate(self, l, theta):
@@ -268,7 +265,6 @@ class FishTracker(object):
         return angles[indx], results[indx]
         
    
-
     def compare_lists(self, ref, comp):
         results = dict()
         matching = True
@@ -312,13 +308,14 @@ class FishTracker(object):
                 rate = np.mean(rates)
             else:
                 rate = rates[0]
+            
             bs = []
             for i in range(0, len(self.t)-1):
                 bs.append(self.theta[i] - rate*self.t[i])
             b = np.mean(bs)
-            self.rate = rate
             self.offset = b
             self.calibrated = True
+            self.rate = rate
 
 
 def main(args):
